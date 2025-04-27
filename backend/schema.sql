@@ -6,7 +6,6 @@ DROP TABLE IF EXISTS status_page_agents;
 DROP TABLE IF EXISTS status_page_monitors;
 DROP TABLE IF EXISTS status_page_config;
 DROP TABLE IF EXISTS monitor_status_history;
-DROP TABLE IF EXISTS monitor_checks;
 DROP TABLE IF EXISTS agents;
 DROP TABLE IF EXISTS monitors;
 DROP TABLE IF EXISTS users;
@@ -44,24 +43,15 @@ CREATE TABLE IF NOT EXISTS monitors (
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
--- 监控历史记录表
-CREATE TABLE IF NOT EXISTS monitor_checks (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  monitor_id INTEGER NOT NULL,
-  status TEXT NOT NULL,
-  response_time INTEGER,
-  status_code INTEGER,
-  error TEXT,
-  checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (monitor_id) REFERENCES monitors(id)
-);
-
--- 监控状态历史表（用于UI状态条展示）
+-- 监控状态历史表
 CREATE TABLE IF NOT EXISTS monitor_status_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   monitor_id INTEGER NOT NULL,
   status TEXT NOT NULL,
   timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  response_time INTEGER,
+  status_code INTEGER,
+  error TEXT,
   FOREIGN KEY (monitor_id) REFERENCES monitors(id)
 );
 
@@ -172,7 +162,6 @@ CREATE TABLE IF NOT EXISTS notification_settings (
   disk_threshold INTEGER NOT NULL DEFAULT 90, -- 适用于agent
   
   channels TEXT DEFAULT '[]', -- JSON数组，存储channel IDs
-  override_global BOOLEAN NOT NULL DEFAULT 0, -- 当target_type不是global时有效
   
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -200,7 +189,7 @@ INSERT OR IGNORE INTO notification_templates (id, name, type, subject, content, 
 VALUES (
   1, 
   'Monitor监控模板', 
-  'default', 
+  'monitor', 
   '【${status}】${name} 监控状态变更',
   '🔔 网站监控状态变更通知
 
@@ -211,7 +200,7 @@ VALUES (
 🔗 地址: ${url}
 ⏱️ 响应时间: ${response_time}
 📝 实际状态码: ${status_code}
-🎯 期望状态码: ${expected_status_code}
+🎯 期望状态码: ${expected_status}
 
 ❗ 错误信息: ${error}',
   1,
@@ -223,7 +212,7 @@ INSERT OR IGNORE INTO notification_templates (id, name, type, subject, content, 
 VALUES (
   2, 
   'Agent监控模板', 
-  'default', 
+  'agent', 
   '【${status}】${name} 客户端状态变更', 
   '🔔 客户端状态变更通知
 
@@ -281,13 +270,3 @@ VALUES (
   1, 90,
   '[1]'
 );
-
--- 初始全局系统通知设置
-INSERT OR IGNORE INTO notification_settings (
-  id, user_id, target_type,
-  enabled, channels
-)
-VALUES (
-  3, 1, 'global-system',
-  1, '[1]'
-); 
