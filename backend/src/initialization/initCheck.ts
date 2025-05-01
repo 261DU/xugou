@@ -3,15 +3,8 @@
  * 用于应用启动时检测数据库是否为空，如果为空则初始化
  */
 import { Bindings } from "../models/db";
-import {
-  createTables,
-  createAdminUser,
-  createDefaultStatusPage,
-  createNotificationTemplates,
-  createNotificationChannelsAndSettings,
-} from "./database";
+import { createTables } from "./database";
 import { runMigrations } from "../migrations/migration";
-import { cleanupOldRecords } from "../repositories/monitor";
 
 // 检查表是否存在
 async function tableExists(env: Bindings, tableName: string): Promise<boolean> {
@@ -41,6 +34,8 @@ export async function checkAndInitializeDatabase(
       "users",
       "monitors",
       "monitor_status_history",
+      "monitor_status_history_24h",
+      "monitor_daily_stats",
       "agents",
       "status_page_config",
       "status_page_monitors",
@@ -49,35 +44,23 @@ export async function checkAndInitializeDatabase(
       "notification_templates",
       "notification_settings",
       "notification_history",
-      "monitor_daily_stats",
     ];
 
     // 检查每个表是否存在
     let missingTables: string[] = [];
 
     for (const table of tablesToCheck) {
-      // 先检查表是否存在
+      // 检查表是否存在
       const exists = await tableExists(env, table);
-
       if (!exists) {
         console.log(`表 ${table} 不存在`);
         missingTables.push(table);
-      } else {
-        try {
-          // 表存在，再查询记录数
-          const result = await env.DB.prepare(
-            `SELECT COUNT(*) as count FROM ${table}`
-          ).first<{ count: number }>();
-          console.log(`表 ${table} 存在，记录数：${result?.count || 0}`);
-        } catch (error) {
-          console.log(`表 ${table} 查询记录时出错：`, error);
-        }
       }
     }
 
     let initialized = false;
 
-    // 如果有表不存在或用户表为空，则进行初始化
+    // 如果有表不存在那就创建
     if (missingTables.length > 0) {
       console.log("开始初始化数据库...");
       console.log(
@@ -93,9 +76,6 @@ export async function checkAndInitializeDatabase(
 
     // 执行迁移
     await runMigrations(env);
-
-    // 执行清理任务
-    await cleanupOldRecords(env.DB);
 
     return {
       initialized,

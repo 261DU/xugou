@@ -121,32 +121,16 @@ export async function getAllMonitors(db: Bindings["DB"]) {
   };
 }
 
-// 批量获取监控项详情
-export async function getMonitorsByIds(
-  db: Bindings["DB"],
-  monitorIds: number[]
-) {
-  if (monitorIds.length === 0) {
-    return { results: [] };
-  }
-
-  const placeholders = monitorIds.map(() => "?").join(",");
-  return await db
-    .prepare(`SELECT * FROM monitors WHERE id IN (${placeholders})`)
-    .bind(...monitorIds)
-    .all<Monitor>();
-}
 
 // 获取单个监控状态历史 24小时内
-export async function getMonitorStatusHistory(
+export async function getMonitorStatusHistoryIn24h(
   db: Bindings["DB"],
   monitorId: number
 ) {
   return await db
     .prepare(
-      `SELECT * FROM monitor_status_history 
+      `SELECT * FROM monitor_status_history_24h 
      WHERE monitor_id = ? 
-     AND timestamp > datetime('now', '-24 hours')
      ORDER BY timestamp ASC`
     )
     .bind(monitorId)
@@ -154,16 +138,15 @@ export async function getMonitorStatusHistory(
 }
 
 // 获取所有监控状态历史 24小时内
-export async function getAllMonitorStatusHistory(db: Bindings["DB"]) {
+export async function getAllMonitorStatusHistoryIn24h(db: Bindings["DB"]) {
   return await db
     .prepare(
-      `SELECT * FROM monitor_status_history 
-     WHERE timestamp > datetime('now', '-24 hours')
+      `SELECT * FROM monitor_status_history_24h
      ORDER BY timestamp ASC`
     )
     .all<MonitorStatusHistory>();
 }
-// 记录监控状态历史
+// 记录监控状态历史到热表
 export async function insertMonitorStatusHistory(
   db: Bindings["DB"],
   monitorId: number,
@@ -177,7 +160,7 @@ export async function insertMonitorStatusHistory(
 
   return await db
     .prepare(
-      `INSERT INTO monitor_status_history (monitor_id, status, timestamp, response_time, status_code, error) 
+      `INSERT INTO monitor_status_history_24h (monitor_id, status, timestamp, response_time, status_code, error) 
      VALUES (?, ?, ?, ?, ?, ?)`
     )
     .bind(monitorId, status, now, response_time, status_code, error)
@@ -202,7 +185,7 @@ export async function updateMonitorStatus(
          response_time = ?,
          uptime = (
            SELECT ROUND((COUNT(CASE WHEN status = 'up' THEN 1 ELSE NULL END) * 100.0 / COUNT(*)), 2)
-           FROM monitor_status_history
+           FROM monitor_status_history_24h
            WHERE monitor_id = ?
            ORDER BY timestamp DESC
            LIMIT 100
@@ -374,6 +357,11 @@ export async function deleteMonitor(db: Bindings["DB"], id: number) {
   // 先删除关联的历史数据
   await db
     .prepare("DELETE FROM monitor_status_history WHERE monitor_id = ?")
+    .bind(id)
+    .run();
+
+  await db
+    .prepare("DELETE FROM monitor_status_history_24h WHERE monitor_id = ?")
     .bind(id)
     .run();
 
